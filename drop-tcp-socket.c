@@ -72,6 +72,7 @@ static void droptcp_drop(struct net *net,
     printk("Drop socket:%p (%s -> %s) state %d\n", sk, src->p, dst->p,
            sk->sk_state);
 
+    // TODO: explain
     if (sk->sk_state == TCP_TIME_WAIT) {
         inet_twsk_deschedule_put(inet_twsk(sk));
     } else {

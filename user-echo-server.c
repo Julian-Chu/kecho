@@ -186,6 +186,12 @@ int main(void)
                            ntohs(client_addr.sin_port), client);
                     setnonblock(client);
                     ev.data.fd = client;
+
+                    /*
+                     *  epoll_ctl is a system call,  kernel will copy ev data
+                     * from user space to kernel space, so it is fine to free or
+                     * reuse ev immediately after epoll_ctl
+                     */
                     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client, &ev) < 0)
                         server_err("Fail to control epoll", &list);
                     push_back_client(&list, client,
