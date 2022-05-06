@@ -32,3 +32,6 @@ user-echo-server: user-echo-server.c
 clean:
 	make -C $(KDIR) M=$(PWD) clean
 	$(RM) user-echo-server bench bench.txt
+
+plot-user:
+	gnuplot scripts/bench_userecho.gp
