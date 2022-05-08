@@ -6,39 +6,44 @@
 
 #include "echo_server.h"
 
-#define BUF_SIZE 4096
+#define BUF_SIZE 5
 
 struct echo_service daemon = {.is_stopped = false};
 extern struct workqueue_struct *kecho_wq;
 
-static int get_request(struct socket *sock, unsigned char *buf, size_t size)
-{
-    struct msghdr msg;
-    struct kvec vec;
-    int length;
-
-    /* kvec setting */
-    vec.iov_len = size;
-    vec.iov_base = buf;
-
-    /* msghdr setting */
-    msg.msg_name = 0;
-    msg.msg_namelen = 0;
-    msg.msg_control = NULL;
-    msg.msg_controllen = 0;
-    msg.msg_flags = 0;
-
-    /*
-     * TODO: during benchmarking, such printk() is useless and lead to worse
-     * result. Add a specific build flag for these printk() would be good.
-     */
-    printk(MODULE_NAME ": start get response\n");
-    /* get msg */
-    length = kernel_recvmsg(sock, &msg, &vec, size, size, msg.msg_flags);
-    printk(MODULE_NAME ": get request = %s\n", buf);
-
-    return length;
-}
+// static int get_request(struct socket *sock, unsigned char *buf, size_t size)
+//{
+//    struct msghdr msg;
+//    struct kvec vec;
+//    int length;
+//
+//    /* kvec setting */
+//    vec.iov_len = size;
+//    vec.iov_base = buf;
+//
+//    /* msghdr setting */
+//    msg.msg_name = 0;
+//    msg.msg_namelen = 0;
+//    msg.msg_control = NULL;
+//    msg.msg_controllen = 0;
+//    msg.msg_flags = 0;
+//
+//    /*
+//     * TODO: during benchmarking, such printk() is useless and lead to worse
+//     * result. Add a specific build flag for these printk() would be good.
+//     */
+//    printk(MODULE_NAME ": start get response\n");
+//    /* get msg */
+//    length = kernel_recvmsg(sock, &msg, &vec, size, size, msg.msg_flags);
+//    printk(MODULE_NAME ": get request = %s\n", buf);
+//    printk(MODULE_NAME ": get request = %x\n", buf);
+//    printk(MODULE_NAME ": get kernel request = %x\n", vec.iov_base);
+//    printk(MODULE_NAME ": buf 0 = %d\n", buf[0]);
+//    printk(MODULE_NAME ": buf 1 = %d\n", buf[1]);
+//    printk(MODULE_NAME ": get request length = %d\n", length);
+//
+//    return length;
+//}
 
 static int send_request(struct socket *sock, unsigned char *buf, size_t size)
 {
@@ -76,21 +81,75 @@ static void echo_server_worker(struct work_struct *work)
     }
 
     while (!daemon.is_stopped) {
-        int res = get_request(worker->sock, buf, BUF_SIZE - 1);
-        if (res <= 0) {
-            if (res) {
+        unsigned char *message;
+        message = kzalloc(BUF_SIZE * 2, GFP_KERNEL);
+        memset(buf, 0, BUF_SIZE);
+
+        int offset = 0;
+        int res;
+        while (true) {
+            res = 0;
+            struct msghdr msg;
+            struct kvec vec;
+
+            // temp var
+            size_t size = BUF_SIZE;
+            /* kvec setting */
+            vec.iov_len = size;
+            vec.iov_base = buf;
+
+            /* msghdr setting */
+            msg.msg_name = 0;
+            msg.msg_namelen = 0;
+            msg.msg_control = NULL;
+            msg.msg_controllen = 0;
+            msg.msg_flags = 0;
+
+            /*
+             * TODO: during benchmarking, such printk() is useless and lead to
+             * worse result. Add a specific build flag for these printk() would
+             * be good.
+             */
+            printk(MODULE_NAME ": waiting for echo message\n");
+            /* get msg */
+            res = kernel_recvmsg(worker->sock, &msg, &vec, size, size,
+                                 msg.msg_flags);
+            printk(MODULE_NAME ": get request chunk = %s, end\n", buf);
+            printk(MODULE_NAME ": get chunk length = %d\n", res);
+
+            memcpy(message + offset, buf, res);
+            memset(buf, 0, offset);
+            offset += res;
+
+            printk(MODULE_NAME ": get message = %s\n", message);
+            // break? outer while ,use goto?
+            if (res < 0) {
                 printk(KERN_ERR MODULE_NAME ": get request error = %d\n", res);
+                break;
             }
-            break;
+            //            if(message[offset] == '\r') {
+            //                printk("CR\n");
+            //                break;
+            //            }
+            //
+            //            if(message[offset] == '\n') {
+            //                printk("LF\n");
+            //                break;
+            //            }
+
+
+            if (message[offset] == '\0') {
+                printk("NULL\n");
+                break;
+            }
         }
 
-        res = send_request(worker->sock, buf, res);
+        res = send_request(worker->sock, message, offset);
         if (res < 0) {
             printk(KERN_ERR MODULE_NAME ": send request error = %d\n", res);
             break;
         }
-
-        memset(buf, 0, res);
+        kfree(message);
     }
 
     kernel_sock_shutdown(worker->sock, SHUT_RDWR);

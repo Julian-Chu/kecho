@@ -35,3 +35,7 @@ clean:
 
 plot-user:
 	gnuplot scripts/bench_userecho.gp
+
+insmod: all
+	sudo rmmod kecho.ko
+	sudo insmod kecho.ko
