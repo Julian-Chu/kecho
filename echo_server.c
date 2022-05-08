@@ -6,7 +6,7 @@
 
 #include "echo_server.h"
 
-#define BUF_SIZE 5
+#define BUF_SIZE 4096
 
 struct echo_service daemon = {.is_stopped = false};
 extern struct workqueue_struct *kecho_wq;
@@ -58,13 +58,16 @@ static int send_request(struct socket *sock, unsigned char *buf, size_t size)
     msg.msg_flags = 0;
 
     vec.iov_base = buf;
-    vec.iov_len = strlen(buf);
+    //    vec.iov_len = strlen(buf);
+    vec.iov_len = size;
 
     printk(MODULE_NAME ": start send request.\n");
 
     length = kernel_sendmsg(sock, &msg, &vec, 1, size);
 
     printk(MODULE_NAME ": send request = %s\n", buf);
+    printk(MODULE_NAME ": send request size = %d, send length = %d\n", size,
+           length);
 
     return length;
 }
@@ -114,33 +117,44 @@ static void echo_server_worker(struct work_struct *work)
             /* get msg */
             res = kernel_recvmsg(worker->sock, &msg, &vec, size, size,
                                  msg.msg_flags);
-            printk(MODULE_NAME ": get request chunk = %s, end\n", buf);
+            printk(MODULE_NAME ": get request chunk = %s\n", buf);
             printk(MODULE_NAME ": get chunk length = %d\n", res);
 
             memcpy(message + offset, buf, res);
-            memset(buf, 0, offset);
+            memset(buf, 0, BUF_SIZE);
+            printk(MODULE_NAME ": get offset = %d\n", offset);
             offset += res;
 
-            printk(MODULE_NAME ": get message = %s\n", message);
+            printk(MODULE_NAME ": get (offset+res) = %d\n", offset);
+            //            printk(MODULE_NAME ": get message = %s\n",
+            //            message[offset-6]);
+            printk(MODULE_NAME ": get message = %s\n",
+                   message[offset - 6]);  // get last chs
             // break? outer while ,use goto?
             if (res < 0) {
                 printk(KERN_ERR MODULE_NAME ": get request error = %d\n", res);
                 break;
             }
-            //            if(message[offset] == '\r') {
+            //            if(message[offset-1] == '\r') {
             //                printk("CR\n");
             //                break;
             //            }
             //
-            //            if(message[offset] == '\n') {
-            //                printk("LF\n");
+            if (message[offset - 1] == '\n') {
+                printk("find LF\n");
+                break;
+            }
+
+
+            //            if (message[offset] == '\0') {
+            //                printk("NULL\n");
+            //                printk("res: %d", res);
             //                break;
             //            }
-
-
-            if (message[offset] == '\0') {
-                printk("NULL\n");
-                break;
+            if (res == 0) {
+                printk("res: %d", res);
+                goto skip_send_request;
+                //                break;
             }
         }
 
@@ -149,6 +163,7 @@ static void echo_server_worker(struct work_struct *work)
             printk(KERN_ERR MODULE_NAME ": send request error = %d\n", res);
             break;
         }
+    skip_send_request:
         kfree(message);
     }
 
