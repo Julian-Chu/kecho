@@ -6,7 +6,7 @@
 
 #include "echo_server.h"
 
-#define BUF_SIZE 4096
+#define BUF_SIZE 512
 
 struct echo_service daemon = {.is_stopped = false};
 extern struct workqueue_struct *kecho_wq;
@@ -85,8 +85,8 @@ static void echo_server_worker(struct work_struct *work)
 
     while (!daemon.is_stopped) {
         unsigned char *message;
-        message = kzalloc(BUF_SIZE * 2, GFP_KERNEL);
-        memset(buf, 0, BUF_SIZE);
+        message = kzalloc(BUF_SIZE * 5, GFP_KERNEL);
+        //        memset(buf, 0, BUF_SIZE);
 
         int offset = 0;
         int res;
@@ -129,7 +129,7 @@ static void echo_server_worker(struct work_struct *work)
             //            printk(MODULE_NAME ": get message = %s\n",
             //            message[offset-6]);
             printk(MODULE_NAME ": get message = %s\n",
-                   message[offset - 6]);  // get last chs
+                   message + offset);  // get last chs
             // break? outer while ,use goto?
             if (res < 0) {
                 printk(KERN_ERR MODULE_NAME ": get request error = %d\n", res);
@@ -158,10 +158,15 @@ static void echo_server_worker(struct work_struct *work)
             }
         }
 
-        res = send_request(worker->sock, message, offset);
+        res = 0;
+        while ((res = send_request(worker->sock, message + res, offset - res)) >
+               0) {
+            printk(KERN_ERR MODULE_NAME ": res = %d\n", res);
+        }
         if (res < 0) {
             printk(KERN_ERR MODULE_NAME ": send request error = %d\n", res);
-            break;
+            goto skip_send_request;
+            //            break;
         }
     skip_send_request:
         kfree(message);
